@@ -945,7 +945,9 @@ document.addEventListener('click', e=>{
   if(tab){
     if(tab.dataset.tab !== 'hoy') detailEx = null;
     document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected', b===tab));
-    ['hoy','cardio','mas'].forEach(k=>{ document.getElementById('pane-'+k).hidden = (k!==tab.dataset.tab); });
+    document.querySelectorAll('main > section[id^="pane-"]').forEach(p=>{
+      p.hidden = (p.id !== 'pane-' + tab.dataset.tab);
+    });
     window.scrollTo({top:0}); return;
   }
 
