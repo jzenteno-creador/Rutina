@@ -245,6 +245,19 @@ details.steps li{margin-bottom:5px}
   text-transform:uppercase}
 .wide.ghost{background:var(--surface);color:var(--ink);border-color:var(--line)}
 
+
+/* peso sugerido */
+.scheme .sug{font-style:normal;font-family:'IBM Plex Mono',monospace;font-size:11.5px;
+  padding:1.5px 6px;border-radius:2px;background:var(--line);color:var(--ink-soft);
+  margin-left:5px;white-space:nowrap}
+.scheme .sug.same,.scheme .sug.hold{background:#DDE3E1;color:#3F4C49}
+.scheme .sug.up{background:var(--bronze);color:#fff}
+.scheme .sug.deload{background:var(--pine);color:#fff}
+.scheme .sug.none{background:none;color:var(--ink-soft);font-style:italic;padding-left:0}
+.usesug{width:100%;margin-top:8px;padding:11px;border:1px dashed var(--bronze);border-radius:3px;
+  background:#F5EFDD;color:#7A6014;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12.5px;
+  letter-spacing:.06em;text-transform:uppercase}
+
 </style>
 </head>
 <body>
@@ -451,6 +464,28 @@ function progression(exId){
   if(allTop && w != null) return {dir:'up', text:'Tope del rango completo la última vez. Subí a '+(Math.round((w+ex.inc)*10)/10)+' kg.'};
   if(mostBelow) return {dir:'down', text:'La última vez no llegaste al piso del rango. Mantené o bajá el peso.'};
   return null;
+}
+
+const fmtKg = n => (Math.round(n*10)/10).toString().replace('.', ',');
+
+function suggestedWeight(exId){
+  const ex = EX[exId];
+  if(ex.noload) return null;
+  const last = lastEntry(exId);
+  const base = (last && last.w != null) ? last.w : state.weights[exId];
+  if(base == null) return {kind:'first'};
+  if(deloadActive()) return {kg: base, kind:'deload'};
+  const p = progression(exId);
+  if(p && p.dir === 'up') return {kg: Math.round((base + ex.inc)*10)/10, kind:'up'};
+  return {kg: base, kind: (p && p.dir === 'down') ? 'hold' : 'same'};
+}
+
+function suggestChip(exId){
+  const s = suggestedWeight(exId);
+  if(!s) return '';
+  if(s.kind === 'first') return '<em class="sug none">elegí el peso</em>';
+  const extra = s.kind === 'up' ? ' ↑' : (s.kind === 'deload' ? ' deload' : '');
+  return `<em class="sug ${s.kind}">hoy ${fmtKg(s.kg)} kg${extra}</em>`;
 }
 
 function rirWarning(exId){
@@ -721,7 +756,7 @@ function renderHoy(){
         <div class="thumb"><img src="${ex.gif}" alt="${ex.name}"></div>
         <div class="card-meta">
           <h3>${ex.name}</h3>
-          <div class="scheme">${nSets} × ${rangeTxt}${w && !ex.noload ? ' · '+w+' kg' : ''}</div>
+          <div class="scheme">${nSets} × ${rangeTxt} ${suggestChip(exId)}</div>
           ${ex.key ? '<span class="tag">No lo saltees</span>' : ''}
         </div>
         <span class="chev">▶</span>
@@ -738,7 +773,10 @@ function renderHoy(){
           <input id="w-${exId}" type="number" inputmode="decimal" step="0.5" min="0"
                  value="${w ?? ''}" placeholder="kg" data-w="${exId}">
           <span class="prev">se aplica a todas las series</span>
-        </div>`}
+        </div>
+        ${(()=>{ const s = suggestedWeight(exId);
+          return (s && s.kg != null && s.kg !== w)
+            ? `<button class="usesug" data-usesug="${exId}" data-kg="${s.kg}">Usar ${fmtKg(s.kg)} kg</button>` : ''; })()}`}
         ${ex.swap ? `<p class="swap">${ex.swap}</p>` : ''}
         <details class="steps"><summary>Paso a paso</summary>
           <ol>${ex.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
@@ -1097,6 +1135,15 @@ document.addEventListener('click', e=>{
     const sid = sw.dataset.ses;
     state.viewing = (sid === ORDER[state.queueIdx]) ? null : sid;
     save(); renderHoy(); return;
+  }
+
+  const us = e.target.closest('[data-usesug]');
+  if(us){
+    state.weights[us.dataset.usesug] = Number(us.dataset.kg);
+    save(); renderHoy();
+    const p = document.getElementById('panel-' + us.dataset.usesug);
+    if(p) p.classList.add('open');
+    return;
   }
 
   const food = e.target.closest('[data-food]');
