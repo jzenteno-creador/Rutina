@@ -226,6 +226,25 @@ details.steps li{margin-bottom:5px}
 .daybar em.hit{background:var(--bronze)}
 .daybar small{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--ink-soft)}
 
+
+/* v5: permitido, nota, export */
+.rowbtns{display:flex;gap:8px}
+.rowbtns .creat{flex:1}
+.creat.treat[data-on="1"]{border-color:var(--bronze);background:#F5EFDD;color:#7A6014}
+.creat.treat[data-on="1"] i{border-color:var(--bronze);background:var(--bronze)}
+.notebox{width:100%;box-sizing:border-box;margin-top:9px;padding:11px 12px;border:1px solid var(--line);
+  border-radius:3px;background:var(--surface);font-family:'IBM Plex Sans',sans-serif;font-size:14px;
+  color:var(--ink);line-height:1.4;resize:vertical;min-height:62px}
+.notebox:focus{outline:none;border-color:var(--pine)}
+.savednote{font-size:13px;color:var(--ink-soft);font-style:italic;padding:5px 0 0}
+.daybar em.treat{background:var(--bronze)}
+.daydots{display:flex;gap:5px;margin-top:4px}
+.daydots div{flex:1;text-align:center;font-size:10px;line-height:1;color:var(--bronze)}
+.wide{width:100%;padding:14px;border-radius:3px;border:1px solid var(--pine);background:var(--pine);
+  color:#fff;cursor:pointer;font-family:'Oswald',sans-serif;font-size:13.5px;letter-spacing:.07em;
+  text-transform:uppercase}
+.wide.ghost{background:var(--surface);color:var(--ink);border-color:var(--line)}
+
 </style>
 </head>
 <body>
@@ -300,6 +319,8 @@ let state = {
   body: [],             // [{date, kg, cm}]
   food: {},             // date -> [{f, q}]
   creatine: [],         // ["2026-08-26", ...]
+  treats: {},           // date -> texto de lo que comió fuera del plan ("" = marcado sin detalle)
+  notes: {},            // date -> nota libre
   deload: { activeUntil: null, lastSuggested: null, anchor: null },
   settings: { wake: true }
 };
@@ -308,6 +329,8 @@ function normalize(){
   state.body = state.body || [];
   state.food = state.food || {};
   state.creatine = state.creatine || [];
+  state.treats = state.treats || {};
+  state.notes = state.notes || {};
   state.deload = Object.assign({activeUntil:null, lastSuggested:null, anchor:null}, state.deload || {});
   state.settings = Object.assign({wake:true}, state.settings || {});
   if(state.deload.activeUntil && state.deload.activeUntil < todayKey()){
@@ -521,6 +544,94 @@ function lastQty(fid){
   return FOODS[fid].def;
 }
 
+/* ================= resumen semanal para pegar ================= */
+function weekReport(){
+  const t = todayKey();
+  const days = [];
+  for(let i=6;i>=0;i--) days.push(isoDate(new Date(t) - i*86400000));
+  const DIA = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+
+  const L = [];
+  L.push('RUTINA — semana del ' + fmtDate(days[0]) + ' al ' + fmtDate(days[6]));
+  L.push('Objetivo de proteína: ' + PROT_GOAL[0] + '-' + PROT_GOAL[1] + ' g por día.');
+  L.push('');
+
+  for(const d of days){
+    const nombre = DIA[new Date(d+'T12:00').getDay()];
+    L.push(nombre.toUpperCase() + ' ' + fmtDate(d));
+
+    const items = state.food[d] || [];
+    if(items.length){
+      L.push('  Comida: ' + items.map(i => FOODS[i.f].n + ' ' + qtyLabel(i)).join(', '));
+      L.push('  Proteína: ' + dayProt(d) + ' g' + (dayProt(d) >= PROT_GOAL[0] ? '' : ' (por debajo del objetivo)'));
+    } else {
+      L.push('  Comida: sin registro');
+    }
+
+    if(d in state.treats){
+      const txt = state.treats[d];
+      L.push('  Permitido: ' + (txt ? txt : 'sí, sin detalle'));
+    }
+    L.push('  Creatina: ' + (state.creatine.includes(d) ? 'sí' : 'no'));
+
+    // entrenamiento de ese día
+    const hechos = [];
+    for(const ex in state.history)
+      for(const e of state.history[ex])
+        if(e.date === d) hechos.push(EX[ex] ? EX[ex].name : ex);
+    const cd = state.cardio.filter(c=>c.date===d);
+    if(hechos.length) L.push('  Sala: ' + hechos.length + ' ejercicios — ' + hechos.join(', '));
+    if(cd.length) L.push('  Cardio: ' + cd.map(c=>c.min+' min a '+c.kmh+' km/h'+(c.inc?' inclinación '+c.inc+'%':'')).join(' + '));
+    if(!hechos.length && !cd.length) L.push('  Entrenamiento: descanso');
+
+    const b = state.body.find(x=>x.date===d);
+    if(b) L.push('  Cuerpo: ' + (b.kg!=null ? b.kg+' kg' : '') + (b.kg!=null&&b.cm!=null?' · ':'') + (b.cm!=null ? b.cm+' cm de cintura' : ''));
+
+    if(state.notes[d]) L.push('  Nota: ' + state.notes[d]);
+    L.push('');
+  }
+
+  // cierre
+  const prots = days.map(dayProt).filter(p=>p>0);
+  const prom = prots.length ? Math.round(prots.reduce((a,b)=>a+b,0)/prots.length) : 0;
+  const cumplidos = days.filter(d=>dayProt(d) >= PROT_GOAL[0]).length;
+  const permitidos = days.filter(d=>d in state.treats).length;
+  const avg = bodyAvg7(t);
+  const cms = state.body.filter(b=>b.cm!=null);
+  const ultCm = cms.length ? cms[cms.length-1] : null;
+
+  L.push('RESUMEN');
+  L.push('Proteína promedio (días con registro): ' + prom + ' g');
+  L.push('Días que alcanzaron el objetivo: ' + cumplidos + ' de 7');
+  L.push('Días con permitido: ' + permitidos);
+  L.push('Días con creatina: ' + days.filter(d=>state.creatine.includes(d)).length + ' de 7');
+  L.push('Sesiones de sala: ' + days.filter(d=>Object.values(state.history).some(h=>h.some(e=>e.date===d))).length);
+  L.push('Sesiones de cardio: ' + days.filter(d=>state.cardio.some(c=>c.date===d)).length);
+  if(avg != null) L.push('Peso, promedio 7 días: ' + avg + ' kg');
+  if(ultCm) L.push('Última cintura: ' + ultCm.cm + ' cm (' + fmtDate(ultCm.date) + ')');
+  L.push('');
+  L.push('Contexto: hombre de 35 años, ~70 kg, keto con una comida a la noche, 3 días de sala y 2 de cinta. Objetivo: sostener el peso y ganar masa en el tren superior, no seguir bajando.');
+
+  return L.join('\n');
+}
+
+async function copyWeek(){
+  const txt = weekReport();
+  try{
+    await navigator.clipboard.writeText(txt);
+    return true;
+  }catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try{ ok = document.execCommand('copy'); }catch(_){}
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
 /* ================= wake lock ================= */
 let wl = null;
 function sessionInProgress(){
@@ -538,6 +649,16 @@ async function updateWakeLock(){
   }catch(e){ wl = null; /* sin soporte o denegado: seguir sin lock */ }
 }
 document.addEventListener('visibilitychange', updateWakeLock);
+
+document.addEventListener('input', e=>{
+  const t = todayKey();
+  if(e.target.id === 'treat-txt'){ state.treats[t] = e.target.value; save(); return; }
+  if(e.target.id === 'note-txt'){
+    const v = e.target.value;
+    if(v.trim()) state.notes[t] = v; else delete state.notes[t];
+    save(); return;
+  }
+});
 
 /* ================= render: Hoy ================= */
 function daysSince(iso){
@@ -758,6 +879,7 @@ function renderComida(){
   ).join('') || '<p class="empty">Todavía no cargaste nada de hoy.</p>';
 
   const creaOn = state.creatine.includes(t);
+  const treatOn = t in state.treats;
 
   // últimos 7 días
   const days = [];
@@ -794,8 +916,27 @@ function renderComida(){
         <span>${creaOn ? '5 g tomados hoy' : '5 g de monohidrato con la cena'}</span></button>
     </div>
 
+    <div class="block"><h3>Permitido</h3>
+      <button class="creat treat" id="treat" data-on="${treatOn?1:0}"><i>${treatOn?'✓':''}</i>
+        <span>${treatOn ? 'Hoy hubo un permitido' : 'Marcar un permitido de hoy'}</span></button>
+      ${treatOn ? `<textarea class="notebox" id="treat-txt" placeholder="¿Qué comiste? Ej: milanesa con papas, dos vasos de whisky">${state.treats[t]||''}</textarea>` : ''}
+    </div>
+
+    <div class="block"><h3>Nota del día</h3>
+      <textarea class="notebox" id="note-txt" placeholder="Lo que quieras dejar anotado: cómo dormiste, cómo te sentiste entrenando, algo que comiste fuera de la lista.">${state.notes[t]||''}</textarea>
+      <p class="note" style="padding:6px 0 0">Se guarda solo.</p>
+    </div>
+
     <div class="block"><h3>Últimos 7 días</h3>
       <div class="daybar">${bars}</div>
+      <div class="daydots">${days.map(x=>`<div>${(x.d in state.treats)?'●':'&nbsp;'}</div>`).join('')}</div>
+      <p class="note" style="padding:6px 0 0">El punto marca los días con permitido.</p>
+    </div>
+
+    <div class="block"><h3>Revisión semanal</h3>
+      <button class="wide" id="copyweek">Copiar la semana</button>
+      <p class="note" style="padding:8px 0 0">Copia todo lo de los últimos 7 días como texto. Pegalo en Claude Code para que te lo analice.</p>
+      <button class="wide ghost" id="seeweek" style="margin-top:8px">Ver el texto</button>
     </div>`;
 }
 
@@ -969,6 +1110,37 @@ document.addEventListener('click', e=>{
     save(); renderComida(); return;
   }
 
+  if(e.target.closest('#treat')){
+    const t = todayKey();
+    if(t in state.treats) delete state.treats[t]; else state.treats[t] = '';
+    save(); renderComida();
+    if(todayKey() in state.treats){ const el = document.getElementById('treat-txt'); if(el) el.focus(); }
+    return;
+  }
+
+  if(e.target.id==='copyweek'){
+    const btn = e.target;
+    copyWeek().then(ok=>{
+      btn.textContent = ok ? 'Copiado ✓' : 'No se pudo copiar';
+      setTimeout(()=>{ btn.textContent = 'Copiar la semana'; }, 1800);
+    });
+    return;
+  }
+
+  if(e.target.id==='seeweek'){
+    const pane = document.getElementById('pane-comida');
+    const prev = document.getElementById('weektxt');
+    if(prev){ prev.remove(); e.target.textContent = 'Ver el texto'; return; }
+    const ta = document.createElement('textarea');
+    ta.id = 'weektxt'; ta.className = 'notebox'; ta.readOnly = true;
+    ta.style.minHeight = '260px'; ta.style.fontFamily = "'IBM Plex Mono', monospace";
+    ta.style.fontSize = '11.5px';
+    ta.value = weekReport();
+    e.target.insertAdjacentElement('afterend', ta);
+    e.target.textContent = 'Ocultar el texto';
+    return;
+  }
+
   if(e.target.closest('#crea')){
     const t = todayKey();
     const i = state.creatine.indexOf(t);
@@ -1085,7 +1257,7 @@ document.addEventListener('click', e=>{
     if(confirm('Borra historial, pesos y cardio. ¿Seguís?')){
       state = {v:2, queueIdx:0, viewing:null, lastDone:null, todayDate:null,
                todaySession:null, todaySets:{}, history:{}, weights:{}, cardio:[],
-               body:[], food:{}, creatine:[],
+               body:[], food:{}, creatine:[], treats:{}, notes:{},
                deload:{activeUntil:null,lastSuggested:null,anchor:null},
                settings:{wake:true}};
       save(); render();
