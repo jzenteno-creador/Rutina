@@ -207,12 +207,18 @@ details.steps li{margin-bottom:5px}
   color:var(--ink-soft);margin-top:3px}
 .foodgrid button[data-eaten="1"]{border-color:var(--pine);background:#EAEFEC}
 .foodgrid button[data-eaten="1"] span{color:var(--pine);font-weight:600}
-.ate{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;
+.ate{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;
   border-bottom:1px dotted var(--line);font-size:14px}
+.ate > span{display:flex;align-items:center;gap:6px;flex:none}
 .ate:last-child{border-bottom:none}
 .ate b{font-family:'IBM Plex Mono',monospace}
-.ate .x{border:none;background:none;color:var(--ink-soft);font-size:19px;line-height:1;
-  padding:0 4px;cursor:pointer}
+.ate .x{border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);
+  font-size:20px;line-height:1;width:44px;height:44px;border-radius:3px;cursor:pointer;
+  flex:none;display:flex;align-items:center;justify-content:center;margin-left:4px}
+.ate .x:active{background:#E8DADA;border-color:#B04A4A;color:#B04A4A}
+#sh-del{width:100%;margin-top:10px;padding:13px;border:1px solid #C08585;border-radius:3px;
+  background:#F7ECEC;color:#9A3B3B;cursor:pointer;font-family:'Oswald',sans-serif;
+  font-size:12.5px;letter-spacing:.06em;text-transform:uppercase}
 .creat{display:flex;align-items:center;gap:12px;width:100%;padding:14px 12px;border-radius:3px;
   border:1px solid var(--line);background:var(--surface);cursor:pointer;text-align:left;
   font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--ink)}
@@ -305,6 +311,7 @@ details.steps li{margin-bottom:5px}
     <button data-rir="1">Me sobraban 1-2</button>
     <button data-rir="0">Al fallo</button>
   </div>
+  <button id="sh-del" hidden>Borrar este alimento</button>
   <div class="sh-actions">
     <button id="sh-cancel">Cancelar</button>
     <button id="sh-ok" class="ok">Listo</button>
@@ -1126,13 +1133,22 @@ function openFoodSheet(fid, editIdx){
   document.getElementById('st-unit').textContent = f.u === 'g' ? 'g' : (f.u === 'u' ? 'unidades' : f.u);
   document.querySelectorAll('#rirrow button').forEach(b=>b.dataset.sel='0');
   document.getElementById('rirrow').hidden = true;
+  document.getElementById('sh-del').hidden = (editIdx == null);
   paintSheet();
   sheet.classList.add('open');
 }
 function closeSheet(){
   sheet.classList.remove('open');
   document.getElementById('rirrow').hidden = false;
+  document.getElementById('sh-del').hidden = true;
   sheetCtx = null;
+}
+
+function deleteFoodItem(idx){
+  const t = curDay();
+  (state.food[t] || []).splice(idx, 1);
+  if(state.food[t] && !state.food[t].length) delete state.food[t];
+  save();
 }
 
 function confirmFoodSheet(){
@@ -1207,10 +1223,8 @@ document.addEventListener('click', e=>{
 
   const delf = e.target.closest('[data-delfood]');
   if(delf){
-    const t = curDay();
-    (state.food[t] || []).splice(Number(delf.dataset.delfood), 1);
-    if(state.food[t] && !state.food[t].length) delete state.food[t];
-    save(); renderComida(); return;
+    deleteFoodItem(Number(delf.dataset.delfood));
+    renderComida(); return;
   }
 
   if(e.target.closest('#treat')){
@@ -1320,6 +1334,12 @@ document.addEventListener('click', e=>{
   if(rirBtn && sheetCtx){
     document.querySelectorAll('#rirrow button').forEach(b=>b.dataset.sel = b===rirBtn ? '1' : '0');
     sheetCtx.rir = Number(rirBtn.dataset.rir);
+    return;
+  }
+  if(e.target.id==='sh-del' && sheetCtx && sheetCtx.editIdx != null){
+    deleteFoodItem(sheetCtx.editIdx);
+    closeSheet();
+    renderComida();
     return;
   }
   if(e.target.id==='sh-ok' && sheetCtx){
