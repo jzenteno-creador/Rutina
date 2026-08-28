@@ -1,6 +1,6 @@
 /* Service worker: guarda todo en caché para que la app funcione sin internet.
    Si cambiás algún archivo, subí el número de CACHE para forzar la actualización. */
-const CACHE = 'rutina-v9';
+const CACHE = 'rutina-v10';
 const ASSETS = [
   './',
   './index.html',
