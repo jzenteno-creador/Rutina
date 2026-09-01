@@ -287,6 +287,10 @@ details.steps li{margin-bottom:5px}
   padding:9px 12px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.05em;
   text-transform:uppercase;flex:none;min-height:40px}
 
+
+.daypick.past span{color:var(--bronze)}
+.daypick.past{border:1px solid var(--bronze);border-radius:3px;padding:4px;background:#F5EFDD}
+
 </style>
 </head>
 <body>
@@ -447,12 +451,24 @@ function save(){
 
 /* si quedó una sesión abierta de un día anterior, se cierra sola:
    fue entrenamiento real, solo faltó tocar "terminar" */
+let autoSaved = null;   // {date, n} de la sesión que se cerró sola al abrir
+
 function closeStaleSession(){
   if(state.todayDate && state.todayDate !== todayKey() && Object.keys(state.todaySets).length){
+    const date = state.todayDate;
+    const n = Object.values(state.todaySets).filter(s=>s.length).length;
     foldToday();
+    if(n) autoSaved = {date, n};
   } else if(state.todayDate && state.todayDate !== todayKey()){
     state.todayDate = null; state.todaySession = null; state.todaySets = {};
   }
+}
+
+/* ================= día de entrenamiento ================= */
+let trainDay = null;
+function curTrain(){
+  if(!trainDay || trainDay > todayKey()) trainDay = todayKey();
+  return trainDay;
 }
 
 /* ================= sesión en curso ================= */
@@ -463,9 +479,9 @@ function currentSession(){
 function isUnavail(id){ return state.unavail.includes(id); }
 
 function ensureToday(sid){
-  if(state.todaySession !== sid || state.todayDate !== todayKey()){
+  if(state.todaySession !== sid || state.todayDate !== curTrain()){
     state.todaySession = sid;
-    state.todayDate = todayKey();
+    state.todayDate = curTrain();
     state.todaySets = {};
   }
 }
@@ -584,7 +600,7 @@ function weeklyVolume(){
   for(const ex in state.history)
     for(const e of state.history[ex])
       if(e.date >= cut) add(ex, e.reps.length);
-  if(state.todayDate === todayKey())
+  if(state.todayDate && state.todayDate >= cut)
     for(const ex in state.todaySets) add(ex, state.todaySets[ex].length);
   return acc;
 }
@@ -772,6 +788,13 @@ function renderHoy(){
   const inQueue = ORDER[state.queueIdx];
 
   let html = '';
+  const tday = curTrain();
+  const esHoyTrain = tday === todayKey();
+
+  if(autoSaved){
+    html += `<div class="banner"><strong>Guardé la sesión del ${fmtDate(autoSaved.date)}</strong> que había quedado abierta: ${autoSaved.n} ejercicio${autoSaved.n>1?'s':''}. Está en "Ver progreso" de cada uno.
+      <div class="b-actions"><button id="auto-ok">Listo</button></div></div>`;
+  }
 
   if(deloadActive()){
     const rest = Math.max(0, -daysSince(state.deload.activeUntil));
@@ -798,11 +821,18 @@ function renderHoy(){
       <p>${dispo} disponibles. Probá los que puedas y marcá los que no se pueden hacer en tu gimnasio. No hace falta hacerlos todos el mismo día.</p></div>`;
   }
 
+  html += `<div class="daypick${esHoyTrain?'':' past'}">
+    <button id="tday-prev" aria-label="Día anterior">‹</button>
+    <span>${dayLabel(tday)}</span>
+    <button id="tday-next" aria-label="Día siguiente" ${esHoyTrain?'disabled':''}>›</button>
+  </div>` + (esHoyTrain ? '' :
+    `<p class="note" style="padding:0 0 6px">Estás cargando una sesión atrasada. Lo que registres queda con la fecha del ${fmtDate(tday)}.</p>`);
+
   ses.items.forEach(item => {
     const exId = item.id, ex = EX[exId];
     if(state.explore && isUnavail(exId)) return;
     const nSets = effSets(item.sets);
-    const done = (state.todaySession===sid && state.todayDate===todayKey()) ? (state.todaySets[exId]||[]) : [];
+    const done = (state.todaySession===sid && state.todayDate===curTrain()) ? (state.todaySets[exId]||[]) : [];
     const w = state.weights[exId];
     const prog = progression(exId);
     const [lo,hi] = ex.range;
@@ -851,8 +881,8 @@ function renderHoy(){
     </article>`;
   });
 
-  const anyDone = state.todaySession===sid && state.todayDate===todayKey() && Object.values(state.todaySets).some(a=>a.length);
-  html += `<button class="finish" id="finish" ${anyDone?'':'disabled'}>Terminar sesión</button>
+  const anyDone = state.todaySession===sid && state.todayDate===curTrain() && Object.values(state.todaySets).some(a=>a.length);
+  html += `<button class="finish" id="finish" ${anyDone?'':'disabled'}>${esHoyTrain ? 'Terminar sesión' : 'Guardar la sesión del ' + fmtDate(tday)}</button>
     <p class="note">${state.explore ? 'Al terminar se guarda lo que hiciste.' : 'Al terminar, la cola avanza a la siguiente.'} Peso a usar: el que te deje la última serie con 2 repeticiones en el tanque.</p>`;
 
   if(state.explore && state.unavail.length){
@@ -1302,6 +1332,26 @@ document.addEventListener('click', e=>{
     save(); renderComida(); return;
   }
 
+  if(e.target.id==='auto-ok'){ autoSaved = null; renderHoy(); return; }
+
+  if(e.target.id==='tday-prev'){
+    if(Object.keys(state.todaySets).some(k=>state.todaySets[k].length)){
+      if(!confirm('Tenés series cargadas sin guardar. Si cambiás de día se pierden. ¿Seguís?')) return;
+    }
+    state.todayDate = null; state.todaySession = null; state.todaySets = {};
+    trainDay = shiftDay(curTrain(), -1);
+    save(); renderHoy(); return;
+  }
+  if(e.target.id==='tday-next'){
+    if(curTrain() >= todayKey()) return;
+    if(Object.keys(state.todaySets).some(k=>state.todaySets[k].length)){
+      if(!confirm('Tenés series cargadas sin guardar. Si cambiás de día se pierden. ¿Seguís?')) return;
+    }
+    state.todayDate = null; state.todaySession = null; state.todaySets = {};
+    trainDay = shiftDay(curTrain(), 1);
+    save(); renderHoy(); return;
+  }
+
   const un = e.target.closest('[data-unavail]');
   if(un){
     const id = un.dataset.unavail;
@@ -1366,7 +1416,7 @@ document.addEventListener('click', e=>{
   const chip = e.target.closest('.setchip');
   if(chip){
     const exId = chip.dataset.ex, i = Number(chip.dataset.i), ses = chip.dataset.ses;
-    const done = (state.todaySession===ses && state.todayDate===todayKey()) ? (state.todaySets[exId]||[]) : [];
+    const done = (state.todaySession===ses && state.todayDate===curTrain()) ? (state.todaySets[exId]||[]) : [];
     if(done[i]){
       // desmarcar la última serie marcada de ese ejercicio
       done.length = i;
@@ -1404,8 +1454,14 @@ document.addEventListener('click', e=>{
   if(e.target.id==='sh-cancel'){ closeSheet(); return; }
 
   if(e.target.id==='finish'){
-    if(confirm('¿Terminar la sesión? La cola avanza a la siguiente.')){
-      foldToday(); render();
+    const atrasada = curTrain() !== todayKey();
+    const msg = atrasada
+      ? '¿Guardar esta sesión con fecha ' + fmtDate(curTrain()) + '?'
+      : (state.explore ? '¿Terminar la sesión?' : '¿Terminar la sesión? La cola avanza a la siguiente.');
+    if(confirm(msg)){
+      foldToday();
+      trainDay = todayKey();
+      render();
       updateWakeLock();
       window.scrollTo({top:0});
     }
