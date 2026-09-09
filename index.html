@@ -297,17 +297,21 @@ details.steps li{margin-bottom:5px}
   background:var(--surface);color:var(--ink);cursor:pointer;font-family:'Oswald',sans-serif;
   font-size:12.5px;letter-spacing:.07em;text-transform:uppercase}
 .ordlist{padding:4px 0}
-.ordrow{display:flex;align-items:center;gap:10px;padding:0 8px;min-height:56px;
+.ordrow{display:flex;align-items:center;gap:9px;padding:0 8px;min-height:64px;
   border-bottom:1px solid var(--line);background:var(--surface)}
 .ordrow:last-child{border-bottom:none}
 .ordrow.dragging{opacity:.65;background:#EAEFEC;border:1px dashed var(--pine);border-radius:3px}
-.grip{width:46px;height:52px;display:flex;align-items:center;justify-content:center;flex:none;
+.grip{width:40px;height:56px;display:flex;align-items:center;justify-content:center;flex:none;
   font-size:22px;color:var(--ink-soft);cursor:grab;touch-action:none;user-select:none;
   -webkit-user-select:none;border-right:1px solid var(--line)}
 .ordrow.dragging .grip{cursor:grabbing}
+.ordthumb{width:52px;height:52px;flex:none;border-radius:3px;overflow:hidden;
+  background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.ordthumb img{width:100%;height:100%;object-fit:contain;pointer-events:none}
 .ordname{flex:1;font-size:14px;line-height:1.25;color:var(--ink)}
-.ordmus{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-soft);
-  flex:none;text-align:right}
+.ordname em{display:block;font-style:normal;font-family:'IBM Plex Mono',monospace;
+  font-size:10.5px;color:var(--ink-soft);margin-top:2px}
+.grip{border-right:none}
 
 </style>
 </head>
@@ -963,8 +967,8 @@ function renderOrder(){
     const ex = EX[i.id];
     return `<div class="ordrow" data-ord="${i.id}">
       <span class="grip" data-drag="${i.id}" aria-label="Arrastrar">≡</span>
-      <span class="ordname">${ex.name}</span>
-      <span class="ordmus">${ex.muscles || ''}</span>
+      <span class="ordthumb"><img src="${ex.gif}" alt="${ex.name}"></span>
+      <span class="ordname">${ex.name}<em>${ex.muscles || ''}</em></span>
     </div>`;
   }).join('');
 
