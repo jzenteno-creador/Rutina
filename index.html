@@ -291,6 +291,24 @@ details.steps li{margin-bottom:5px}
 .daypick.past span{color:var(--bronze)}
 .daypick.past{border:1px solid var(--bronze);border-radius:3px;padding:4px;background:#F5EFDD}
 
+
+/* ordenar ejercicios */
+.ordbtn{width:100%;margin:12px 0 0;padding:12px;border:1px solid var(--line);border-radius:3px;
+  background:var(--surface);color:var(--ink);cursor:pointer;font-family:'Oswald',sans-serif;
+  font-size:12.5px;letter-spacing:.07em;text-transform:uppercase}
+.ordlist{padding:4px 0}
+.ordrow{display:flex;align-items:center;gap:10px;padding:0 8px;min-height:56px;
+  border-bottom:1px solid var(--line);background:var(--surface)}
+.ordrow:last-child{border-bottom:none}
+.ordrow.dragging{opacity:.65;background:#EAEFEC;border:1px dashed var(--pine);border-radius:3px}
+.grip{width:46px;height:52px;display:flex;align-items:center;justify-content:center;flex:none;
+  font-size:22px;color:var(--ink-soft);cursor:grab;touch-action:none;user-select:none;
+  -webkit-user-select:none;border-right:1px solid var(--line)}
+.ordrow.dragging .grip{cursor:grabbing}
+.ordname{flex:1;font-size:14px;line-height:1.25;color:var(--ink)}
+.ordmus{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-soft);
+  flex:none;text-align:right}
+
 </style>
 </head>
 <body>
@@ -371,7 +389,8 @@ let state = {
   deload: { activeUntil: null, lastSuggested: null, anchor: null },
   settings: { wake: true },
   explore: true,        // modo "probando los ejercicios": una sola lista con todo
-  unavail: []           // ids marcados como no disponibles en el gimnasio
+  unavail: [],          // ids marcados como no disponibles en el gimnasio
+  order: []             // orden elegido a mano, para no perder tiempo cambiando discos
 };
 
 function normalize(){
@@ -384,6 +403,7 @@ function normalize(){
   state.settings = Object.assign({wake:true}, state.settings || {});
   if(state.explore === undefined) state.explore = true;
   state.unavail = state.unavail || [];
+  state.order = state.order || [];
   if(state.deload.activeUntil && state.deload.activeUntil < todayKey()){
     state.deload.anchor = state.deload.activeUntil;
     state.deload.activeUntil = null;
@@ -771,6 +791,26 @@ document.addEventListener('input', e=>{
 /* ================= render: Hoy ================= */
 const openPanels = new Set();
 
+// aplica el orden guardado; lo que no figure queda al final, en su orden original
+function orderedItems(items){
+  if(!state.order || !state.order.length) return items;
+  const rest = items.slice();
+  const out = [];
+  state.order.forEach(id => {
+    const i = rest.findIndex(x => x.id === id);
+    if(i >= 0) out.push(rest.splice(i,1)[0]);
+  });
+  return out.concat(rest);
+}
+
+// mover un elemento de una posición a otra
+function moveInOrder(list, from, to){
+  const out = list.slice();
+  const [it] = out.splice(from, 1);
+  out.splice(to, 0, it);
+  return out;
+}
+
 function restorePanels(){
   openPanels.forEach(id => {
     const p = document.getElementById('panel-'+id);
@@ -833,6 +873,8 @@ function renderHoy(){
       <p>${dispo} disponibles. Probá los que puedas y marcá los que no se pueden hacer en tu gimnasio. No hace falta hacerlos todos el mismo día.</p></div>`;
   }
 
+  html += `<button class="ordbtn" id="ord-open">≡ Ordenar los ejercicios</button>`;
+
   html += `<div class="daypick${esHoyTrain?'':' past'}">
     <button id="tday-prev" aria-label="Día anterior">‹</button>
     <span>${dayLabel(tday)}</span>
@@ -840,7 +882,7 @@ function renderHoy(){
   </div>` + (esHoyTrain ? '' :
     `<p class="note" style="padding:0 0 6px">Estás cargando una sesión atrasada. Lo que registres queda con la fecha del ${fmtDate(tday)}.</p>`);
 
-  ses.items.forEach(item => {
+  orderedItems(ses.items).forEach(item => {
     const exId = item.id, ex = EX[exId];
     if(state.explore && isUnavail(exId)) return;
     const nSets = effSets(item.sets);
@@ -908,6 +950,86 @@ function renderHoy(){
   pane.innerHTML = html;
   restorePanels();
 }
+
+/* ================= ordenar los ejercicios ================= */
+let ordering = false;
+
+function renderOrder(){
+  const pane = document.getElementById('pane-hoy');
+  const ses = SESSIONS[currentSession()];
+  const items = orderedItems(ses.items).filter(i => !(state.explore && isUnavail(i.id)));
+
+  const filas = items.map(i => {
+    const ex = EX[i.id];
+    return `<div class="ordrow" data-ord="${i.id}">
+      <span class="grip" data-drag="${i.id}" aria-label="Arrastrar">≡</span>
+      <span class="ordname">${ex.name}</span>
+      <span class="ordmus">${ex.muscles || ''}</span>
+    </div>`;
+  }).join('');
+
+  pane.innerHTML = `
+    <button class="back" id="ord-back">← Volver</button>
+    <div class="day-head"><h2>Ordenar</h2>
+      <p>Arrastrá desde el ≡ con el dedo. Se guarda solo.</p></div>
+    <div class="block ordlist" id="ordlist">${filas}</div>
+    <p class="note">Conviene juntar los que usan el mismo equipo: primero todo lo de mancuernas con el mismo peso, después lo de polea, y al final lo de piso. Cada cambio de discos son dos minutos que no estás entrenando.</p>`;
+}
+
+/* arrastre con el dedo (y con el mouse, para probar en la compu) */
+let dragEl = null;
+
+function dragStart(row){
+  if(!row) return;
+  dragEl = row;
+  row.classList.add('dragging');
+}
+
+function dragOver(clientY){
+  if(!dragEl) return;
+  const list = document.getElementById('ordlist');
+  if(!list) return;
+  const otras = [...list.querySelectorAll('.ordrow')].filter(r => r !== dragEl);
+  let despues = null;
+  for(const r of otras){
+    const b = r.getBoundingClientRect();
+    if(clientY > b.top + b.height / 2) despues = r;
+  }
+  if(despues) despues.after(dragEl);
+  else list.prepend(dragEl);
+}
+
+function dragEnd(){
+  if(!dragEl) return;
+  dragEl.classList.remove('dragging');
+  dragEl = null;
+  const list = document.getElementById('ordlist');
+  if(!list) return;
+  const visibles = [...list.querySelectorAll('.ordrow')].map(r => r.dataset.ord);
+  // conservar en el orden guardado los que no se ven en esta pantalla
+  const ocultos = (state.order || []).filter(id => !visibles.includes(id));
+  state.order = visibles.concat(ocultos);
+  save();
+}
+
+document.addEventListener('touchstart', e => {
+  const h = e.target.closest('[data-drag]');
+  if(h) dragStart(h.closest('.ordrow'));
+}, {passive: true});
+
+document.addEventListener('touchmove', e => {
+  if(dragEl){ e.preventDefault(); dragOver(e.touches[0].clientY); }
+}, {passive: false});
+
+document.addEventListener('touchend', dragEnd);
+document.addEventListener('touchcancel', dragEnd);
+
+document.addEventListener('mousedown', e => {
+  const h = e.target.closest('[data-drag]');
+  if(h){ e.preventDefault(); dragStart(h.closest('.ordrow')); }
+});
+document.addEventListener('mousemove', e => { if(dragEl) dragOver(e.clientY); });
+document.addEventListener('mouseup', dragEnd);
 
 /* ================= detalle de ejercicio ================= */
 let detailEx = null;
@@ -1170,7 +1292,7 @@ function renderMas(){
 }
 
 function render(){
-  if(detailEx) renderDetail(detailEx); else renderHoy();
+  if(ordering) renderOrder(); else if(detailEx) renderDetail(detailEx); else renderHoy();
   renderCardio(); renderCuerpo(); renderComida(); renderMas(); renderStreak();
 }
 function renderStreak(){
@@ -1260,7 +1382,7 @@ function confirmSheet(){
 document.addEventListener('click', e=>{
   const tab = e.target.closest('nav button');
   if(tab){
-    if(tab.dataset.tab !== 'hoy') detailEx = null;
+    if(tab.dataset.tab !== 'hoy'){ detailEx = null; ordering = false; }
     document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected', b===tab));
     document.querySelectorAll('main > section[id^="pane-"]').forEach(p=>{
       p.hidden = (p.id !== 'pane-' + tab.dataset.tab);
@@ -1366,6 +1488,9 @@ document.addEventListener('click', e=>{
     trainDay = shiftDay(curTrain(), 1);
     save(); renderHoy(); return;
   }
+
+  if(e.target.id==='ord-open'){ ordering = true; renderOrder(); window.scrollTo({top:0}); return; }
+  if(e.target.id==='ord-back'){ ordering = false; renderHoy(); window.scrollTo({top:0}); return; }
 
   const un = e.target.closest('[data-unavail]');
   if(un){
@@ -1511,7 +1636,7 @@ document.addEventListener('click', e=>{
                todaySession:null, todaySets:{}, history:{}, weights:{}, cardio:[],
                body:[], food:{}, creatine:[], treats:{}, notes:{},
                deload:{activeUntil:null,lastSuggested:null,anchor:null},
-               settings:{wake:true}, explore:true, unavail:[]};
+               settings:{wake:true}, explore:true, unavail:[], order:[]};
       save(); render();
     }
     return;
