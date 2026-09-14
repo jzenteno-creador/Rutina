@@ -371,6 +371,15 @@ const FOODS = {"pechuga": {"n": "Pechuga de pollo", "p": 23, "pu": 0.23, "step":
 const PROT_GOAL = [130,140];
 
 /* ================= estado ================= */
+/* Ejercicios con una mancuerna en cada mano. El peso que se carga y se guarda
+   es SIEMPRE el de una sola mancuerna, no la suma de las dos. */
+const PAIR = new Set(['remo2','curl','lateral','pressinc','pressplano','vuelop','rumano']);
+const isPair = id => PAIR.has(id);
+const perDbTxt = id => isPair(id) ? ' c/u' : '';
+/* Pesos que se pueden armar en una mancuerna: barra de 2 kg + discos de 1,5 / 2,5 / 5
+   en cada punta, más las fijas de 4 y 6. */
+const ARMABLE = new Set([2,4,5,6,7,10,12,15,17,20]);
+
 const KEY = 'rutina:v2';
 const OLDKEY = 'rutina:state';
 
@@ -408,6 +417,7 @@ function normalize(){
   if(state.explore === undefined) state.explore = true;
   state.unavail = state.unavail || [];
   state.order = state.order || [];
+  migratePerDumbbell();
   if(state.deload.activeUntil && state.deload.activeUntil < todayKey()){
     state.deload.anchor = state.deload.activeUntil;
     state.deload.activeUntil = null;
@@ -449,6 +459,27 @@ function migrate(){
     }
     // la clave vieja queda intacta como respaldo
   }catch(e){ console.error('Migración v1:', e); }
+}
+
+/* Hasta el 14/9/2026 los ejercicios de dos mancuernas se cargaban con el total de las dos.
+   Esto lo pasa al peso de una sola, una única vez, sin tocar fechas ni repeticiones.
+   Si la mitad no se puede armar con los discos que hay, ese registro ya estaba
+   cargado por mancuerna y queda como está. */
+function perDumbbell(w){
+  if(w == null) return w;
+  const half = w / 2;
+  return ARMABLE.has(half) ? half : w;
+}
+function migratePerDumbbell(){
+  if(state.perDb) return;
+  for(const ex in state.history){
+    if(!isPair(ex)) continue;
+    for(const e of state.history[ex]) e.w = perDumbbell(e.w);
+  }
+  for(const ex in state.weights){
+    if(isPair(ex)) state.weights[ex] = perDumbbell(state.weights[ex]);
+  }
+  state.perDb = true;
 }
 
 function load(){
@@ -546,7 +577,7 @@ function progression(exId){
   const allTop = last.reps.every(r => r >= hi);
   const mostBelow = last.reps.filter(r => r < lo).length > last.reps.length/2;
   const w = last.w ?? state.weights[exId];
-  if(allTop && w != null) return {dir:'up', text:'Tope del rango completo la última vez. Subí a '+(Math.round((w+ex.inc)*10)/10)+' kg.'};
+  if(allTop && w != null) return {dir:'up', text:'Tope del rango completo la última vez. Subí a '+(Math.round((w+ex.inc)*10)/10)+' kg'+perDbTxt(exId)+'.'};
   if(mostBelow) return {dir:'down', text:'La última vez no llegaste al piso del rango. Mantené o bajá el peso.'};
   return null;
 }
@@ -570,7 +601,7 @@ function suggestChip(exId){
   if(!s) return '';
   if(s.kind === 'first') return '<em class="sug none">elegí el peso</em>';
   const extra = s.kind === 'up' ? ' ↑' : (s.kind === 'deload' ? ' deload' : '');
-  return `<em class="sug ${s.kind}">hoy ${fmtKg(s.kg)} kg${extra}</em>`;
+  return `<em class="sug ${s.kind}">hoy ${fmtKg(s.kg)} kg${perDbTxt(exId)}${extra}</em>`;
 }
 
 function rirWarning(exId){
@@ -833,7 +864,7 @@ function lastLine(exId){
   const last = lastEntry(exId);
   if(!last) return 'primera vez con registro';
   const reps = last.reps.map(r => r==null ? '?' : r).join(', ');
-  const w = last.w != null ? last.w+' kg × ' : '';
+  const w = last.w != null ? last.w+' kg'+perDbTxt(exId)+' × ' : '';
   return 'última vez: ' + w + reps + (EX[exId].time ? ' seg' : '');
 }
 
@@ -920,14 +951,14 @@ function renderHoy(){
         <div class="demo"><img src="${ex.gif}" alt="${ex.name}"></div>
         <p class="cue">${ex.cue}</p>
         ${ex.noload ? '' : `<div class="load">
-          <label for="w-${exId}">Peso</label>
+          <label for="w-${exId}">${isPair(exId) ? 'Peso de cada mancuerna' : 'Peso'}</label>
           <input id="w-${exId}" type="number" inputmode="decimal" step="0.5" min="0"
                  value="${w ?? ''}" placeholder="kg" data-w="${exId}">
-          <span class="prev">se aplica a todas las series</span>
+          <span class="prev">${isPair(exId) ? 'una sola mancuerna, no las dos — ' : ''}se aplica a todas las series</span>
         </div>
         ${(()=>{ const s = suggestedWeight(exId);
           return (s && s.kg != null && s.kg !== w)
-            ? `<button class="usesug" data-usesug="${exId}" data-kg="${s.kg}">Usar ${fmtKg(s.kg)} kg</button>` : ''; })()}`}
+            ? `<button class="usesug" data-usesug="${exId}" data-kg="${s.kg}">Usar ${fmtKg(s.kg)} kg${perDbTxt(exId)}</button>` : ''; })()}`}
         ${ex.swap ? `<p class="swap">${ex.swap}</p>` : ''}
         <details class="steps"><summary>Paso a paso</summary>
           <ol>${ex.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
@@ -1046,7 +1077,7 @@ function renderDetail(exId){
 
   const points = h.map(e => isLoad ? bestE1RM(e) : bestReps(e)).map(v => v==null ? null : Math.round(v*10)/10);
   const valid = points.filter(v=>v!=null);
-  const unit = isLoad ? 'kg e1RM' : (ex.time ? 'seg (mejor serie)' : 'reps (mejor serie)');
+  const unit = isLoad ? ('kg e1RM' + perDbTxt(exId)) : (ex.time ? 'seg (mejor serie)' : 'reps (mejor serie)');
 
   let chart = '';
   if(valid.length > 1){
@@ -1066,7 +1097,7 @@ function renderDetail(exId){
 
   const rows = h.slice().reverse().map(e => {
     const reps = e.reps.map(r=>r==null?'?':r).join(', ');
-    const w = e.w != null ? e.w+' kg × ' : '';
+    const w = e.w != null ? e.w+' kg'+perDbTxt(exId)+' × ' : '';
     return `<div class="stat"><span>${fmtDate(e.date)}</span><b>${w}${reps}${ex.time?' seg':''}</b></div>`;
   }).join('') || '<p class="empty">Sin registros todavía. Se llena solo a medida que entrenás.</p>';
 
