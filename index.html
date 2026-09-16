@@ -431,6 +431,7 @@ function normalize(){
   state.unavail = state.unavail || [];
   state.order = state.order || [];
   migratePerDumbbell();
+  migrateOrden();
   if(state.deload.activeUntil && state.deload.activeUntil < todayKey()){
     state.deload.anchor = state.deload.activeUntil;
     state.deload.activeUntil = null;
@@ -493,6 +494,17 @@ function migratePerDumbbell(){
     if(isPair(ex)) state.weights[ex] = perDumbbell(state.weights[ex]);
   }
   state.perDb = true;
+}
+
+/* Orden pensado para tocar los discos una sola vez: arranca con las de plástico
+   en 5 para las laterales, después se suma un disco por punta y quedan en 10 para
+   los tres siguientes, y el resto sale con las de metal en 7, armadas de entrada.
+   Se aplica una sola vez; después se puede reordenar a mano como siempre. */
+const ORDEN_DISCOS = ['lateral','pressplano','remo2','remo1','pressinc','pullover','curl','jalon','triceps','hipthrust','plancha'];
+function migrateOrden(){
+  if(state.ordV) return;
+  state.order = ORDEN_DISCOS.slice();
+  state.ordV = 1;
 }
 
 function load(){
