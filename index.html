@@ -260,6 +260,7 @@ details.steps li{margin-bottom:5px}
 .scheme .sug.up{background:var(--bronze);color:#fff}
 .scheme .sug.deload{background:var(--pine);color:#fff}
 .scheme .sug.none{background:none;color:var(--ink-soft);font-style:italic;padding-left:0}
+.scheme .discos{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-soft);opacity:.85}
 .usesug{width:100%;margin-top:8px;padding:11px;border:1px dashed var(--bronze);border-radius:3px;
   background:#F5EFDD;color:#7A6014;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12.5px;
   letter-spacing:.06em;text-transform:uppercase}
@@ -382,11 +383,61 @@ const perDbTxt = id => isPair(id) ? ' c/u' : '';
 const LADDER = [2,5,7,10,12,15,17,20];
 const ARMABLE = new Set(LADDER);
 const usaMancuerna = id => isPair(id) || id === 'remo1' || id === 'pullover';
+/* La barra grande del hip thrust pesa 8 kg y lleva discos de a pares, hasta dos
+   de cada medida por lado. */
+const HIP_BARRA = 8;
+const HIP_LADDER = (function(){
+  const set = new Set();
+  for(let a=0;a<=2;a++) for(let b=0;b<=2;b++) for(let c=0;c<=2;c++)
+    set.add(HIP_BARRA + 2*(a*5 + b*2.5 + c*1.5));
+  return Array.from(set).sort(function(x,y){return x-y;});
+})();
+
+/* Qué discos poner para llegar a un peso. Busca la combinación con menos discos. */
+function comboPorPunta(kilos, maxIguales){
+  let mejor = null;
+  for(let a=0;a<=maxIguales;a++) for(let b=0;b<=maxIguales;b++) for(let c=0;c<=maxIguales;c++){
+    if(Math.abs(a*5 + b*2.5 + c*1.5 - kilos) > 0.001) continue;
+    const n = a+b+c;
+    if(mejor === null || n < mejor.n) mejor = {n:n, a:a, b:b, c:c};
+  }
+  return mejor;
+}
+function textoDiscos(combo){
+  if(!combo || combo.n === 0) return null;
+  const partes = [];
+  if(combo.a) partes.push(combo.a === 1 ? 'uno de 5' : combo.a + ' de 5');
+  if(combo.b) partes.push(combo.b === 1 ? 'uno de 2,5' : combo.b + ' de 2,5');
+  if(combo.c) partes.push(combo.c === 1 ? 'uno de 1,5' : combo.c + ' de 1,5');
+  return partes.join(' y ');
+}
+function comoArmar(exId, kg){
+  if(kg == null) return '';
+  if(exId === 'hipthrust'){
+    if(kg === HIP_BARRA) return 'la barra sola';
+    const t = textoDiscos(comboPorPunta((kg - HIP_BARRA)/2, 2));
+    return t ? t + ' por lado' : '';
+  }
+  if(!usaMancuerna(exId)) return '';
+  if(kg === 5)  return 'plástico: un disco de 2,5 por punta';
+  if(kg === 10) return 'plástico: dos discos de 2,5 por punta';
+  if(kg === 2)  return 'metal: la barra sola';
+  const t = textoDiscos(comboPorPunta((kg - 2)/2, 1));
+  return t ? 'metal: ' + t + ' por punta' : '';
+}
+function discosChip(exId){
+  const s = suggestedWeight(exId);
+  if(!s || s.kg == null) return '';
+  const t = comoArmar(exId, s.kg);
+  return t ? '<span class="discos">' + t + '</span>' : '';
+}
+
 /* El próximo peso posible. Con mancuerna sube al siguiente que se pueda armar;
    en máquina, polea o barra sigue el salto de siempre. */
 function nextWeight(exId, base){
-  if(usaMancuerna(exId)){
-    const next = LADDER.find(v => v > base);
+  const escalera = usaMancuerna(exId) ? LADDER : (exId === 'hipthrust' ? HIP_LADDER : null);
+  if(escalera){
+    const next = escalera.find(v => v > base + 0.001);
     return next == null ? base : next;
   }
   const inc = EX[exId].inc;
@@ -432,6 +483,7 @@ function normalize(){
   state.order = state.order || [];
   migratePerDumbbell();
   migrateOrden();
+  migrateHipThrust();
   if(state.deload.activeUntil && state.deload.activeUntil < todayKey()){
     state.deload.anchor = state.deload.activeUntil;
     state.deload.activeUntil = null;
@@ -501,6 +553,16 @@ function migratePerDumbbell(){
    los tres siguientes, y el resto sale con las de metal en 7, armadas de entrada.
    Se aplica una sola vez; después se puede reordenar a mano como siempre. */
 const ORDEN_DISCOS = ['lateral','pressplano','remo2','remo1','pressinc','pullover','curl','jalon','triceps','hipthrust','plancha'];
+/* La barra grande del hip thrust pesa 8 kg, no 2. Todos los registros quedaron
+   6 kg abajo. Se suma una sola vez. */
+function migrateHipThrust(){
+  if(state.hipV) return;
+  const h = state.history['hipthrust'] || [];
+  for(const e of h) if(e.w != null) e.w = e.w + 6;
+  if(state.weights['hipthrust'] != null) state.weights['hipthrust'] = state.weights['hipthrust'] + 6;
+  state.hipV = 1;
+}
+
 function migrateOrden(){
   if(state.ordV) return;
   state.order = ORDEN_DISCOS.slice();
@@ -963,7 +1025,7 @@ function renderHoy(){
         <div class="thumb"><img src="${ex.gif}" alt="${ex.name}"></div>
         <div class="card-meta">
           <h3>${ex.name}</h3>
-          <div class="scheme">${nSets} × ${rangeTxt} ${suggestChip(exId)}</div>
+          <div class="scheme">${nSets} × ${rangeTxt} ${suggestChip(exId)}${discosChip(exId)}</div>
           ${ex.key ? '<span class="tag">No lo saltees</span>' : ''}
         </div>
         <span class="chev">▶</span>
@@ -1715,7 +1777,7 @@ function refreshWeightBits(exId){
       const item = (SESSIONS[currentSession()].items || []).find(i=>i.id===exId);
       const ex = EX[exId];
       const rangeTxt = ex.time ? `${ex.range[0]}-${ex.range[1]} seg` : `${ex.range[0]}-${ex.range[1]}`;
-      sc.innerHTML = `${effSets(item ? item.sets : 3)} × ${rangeTxt} ${suggestChip(exId)}`;
+      sc.innerHTML = `${effSets(item ? item.sets : 3)} × ${rangeTxt} ${suggestChip(exId)}${discosChip(exId)}`;
     }
   }
   const btn = document.querySelector(`[data-usesug="${exId}"]`);
