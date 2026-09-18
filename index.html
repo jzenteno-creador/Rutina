@@ -10,7 +10,7 @@
 <style>
 :root{
   --concrete:#DFE3E0; --surface:#F5F6F4; --ink:#1B2220; --ink-soft:#5A6663;
-  --pine:#2F5D50; --brass:#B08D2E; --line:#C3CAC6;
+  --pine:#2F5D50; --brass:#B08D2E; --bronze:#B08D2E; --line:#C3CAC6;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{background:var(--concrete);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;
@@ -20,6 +20,7 @@ body{background:var(--concrete);color:var(--ink);font-family:'IBM Plex Sans',sys
 header{background:var(--ink);color:var(--surface);padding:18px 0 14px;border-bottom:3px solid var(--brass)}
 header .wrap{display:flex;align-items:baseline;justify-content:space-between}
 h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:26px;letter-spacing:.06em;text-transform:uppercase}
+.ver{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:400;color:var(--brass);letter-spacing:.04em;text-transform:none}
 .streak{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brass);letter-spacing:.04em}
 
 nav{position:sticky;top:0;z-index:20;background:var(--concrete);border-bottom:1px solid var(--line)}
@@ -129,7 +130,23 @@ details.steps li{margin-bottom:5px}
 .setchip:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 .lastline{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);
   padding:0 12px 8px}
-.prog{margin:0 12px 10px;padding:8px 10px;border-radius:3px;font-size:13px;font-weight:500}
+.prog{margin:0 12px 10px;padding:8px 10px;border-radius:3px;font-size:13px;font-weight:500;
+  display:flex;align-items:center;gap:8px}
+.prog>span{flex:1}
+.wrow{margin:0 12px 10px;border:1px solid var(--line);border-radius:3px;padding:8px 10px;background:var(--surface)}
+.wrow label{display:block;font-family:'Oswald',sans-serif;font-size:11.5px;color:var(--ink-soft);
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.wctl{display:flex;align-items:center;gap:8px}
+.wstep{flex:none;width:46px;height:46px;border:1px solid var(--line);border-radius:3px;background:#fff;
+  font-size:24px;line-height:1;color:var(--ink);cursor:pointer}
+.wstep:active{background:var(--concrete)}
+.wstep:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.wctl input{flex:1;min-width:0;width:100%;text-align:center;font-family:'IBM Plex Mono',monospace;
+  font-size:26px;font-weight:600;padding:7px 4px;border:1px solid var(--line);border-radius:3px;
+  background:#fff;color:var(--ink)}
+.wu{flex:none;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft)}
+.wdiscos{margin:6px 0 0;font-size:12px;color:var(--ink-soft)}
+.wdiscos:empty{display:none}
 .prog.up{background:#E7EFE3;border:1px solid var(--pine);color:var(--pine)}
 .prog.down{background:#F4EDE0;border:1px solid var(--brass);color:#7A621F}
 #sheet{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);
@@ -261,7 +278,7 @@ details.steps li{margin-bottom:5px}
 .scheme .sug.deload{background:var(--pine);color:#fff}
 .scheme .sug.none{background:none;color:var(--ink-soft);font-style:italic;padding-left:0}
 .scheme .discos{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-soft);opacity:.85}
-.usesug{width:100%;margin-top:8px;padding:11px;border:1px dashed var(--bronze);border-radius:3px;
+.usesug{flex:none;padding:8px 12px;border:1px solid var(--bronze);border-radius:3px;
   background:#F5EFDD;color:#7A6014;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12.5px;
   letter-spacing:.06em;text-transform:uppercase}
 
@@ -318,7 +335,7 @@ details.steps li{margin-bottom:5px}
 </head>
 <body>
 
-<header><div class="wrap"><h1>Rutina</h1><span class="streak" id="streak"></span></div></header>
+<header><div class="wrap"><h1>Rutina <span class="ver">v1</span></h1><span class="streak" id="streak"></span></div></header>
 
 <nav><div class="wrap" role="tablist">
   <button role="tab" data-tab="hoy" aria-selected="true">Hoy</button>
@@ -430,6 +447,24 @@ function discosChip(exId){
   if(!s || s.kg == null) return '';
   const t = comoArmar(exId, s.kg);
   return t ? '<span class="discos">' + t + '</span>' : '';
+}
+
+/* El peso anterior de la escalera, para el botón de bajar. */
+function prevWeight(exId, base){
+  const escalera = usaMancuerna(exId) ? LADDER : (exId === 'hipthrust' ? HIP_LADDER : null);
+  if(escalera){
+    const menores = escalera.filter(v => v < base - 0.001);
+    return menores.length ? menores[menores.length - 1] : base;
+  }
+  const inc = EX[exId].inc;
+  if(inc == null) return base;
+  return Math.max(0, Math.round((base - inc) * 10) / 10);
+}
+
+/* Lo que va debajo del peso, en la tarjeta. */
+function textoWrow(exId, kg){
+  if(kg == null) return 'poné el peso que vas a usar';
+  return comoArmar(exId, kg) || '';
 }
 
 /* El próximo peso posible. Con mancuerna sube al siguiente que se pueda armar;
@@ -1011,6 +1046,8 @@ function renderHoy(){
     const done = (state.todaySession===sid && state.todayDate===curTrain()) ? (state.todaySets[exId]||[]) : [];
     const w = state.weights[exId];
     const prog = progression(exId);
+    const sug = suggestedWeight(exId);
+    const verUsar = sug && sug.kg != null && sug.kg !== w;
     const [lo,hi] = ex.range;
     const rangeTxt = ex.time ? `${lo}-${hi} seg` : `${lo}-${hi}${ex.side?' por lado':''}`;
 
@@ -1025,27 +1062,30 @@ function renderHoy(){
         <div class="thumb"><img src="${ex.gif}" alt="${ex.name}"></div>
         <div class="card-meta">
           <h3>${ex.name}</h3>
-          <div class="scheme">${nSets} × ${rangeTxt} ${suggestChip(exId)}${discosChip(exId)}</div>
+          <div class="scheme">${nSets} × ${rangeTxt}</div>
           ${ex.key ? '<span class="tag">No lo saltees</span>' : ''}
         </div>
         <span class="chev">▶</span>
       </div>
       <div class="lastline">${lastLine(exId)}</div>
-      ${prog ? `<div class="prog ${prog.dir}">${prog.text}</div>` : ''}
+      ${prog ? `<div class="prog ${prog.dir}"><span>${prog.text}</span>${verUsar
+        ? `<button class="usesug" data-usesug="${exId}" data-kg="${sug.kg}">Usar ${fmtKg(sug.kg)}</button>` : ''}</div>` : ''}
       ${rirWarning(exId) ? `<div class="warnrir">Tres sesiones seguidas al fallo en este ejercicio. Bajá un toque el peso o dejá más en el tanque.</div>` : ''}
+      ${ex.noload ? '' : `<div class="wrow" data-wrow="${exId}">
+        <label for="w-${exId}">${isPair(exId) ? 'Peso de cada mancuerna' : 'Peso'}</label>
+        <div class="wctl">
+          <button class="wstep" data-wstep="${exId}" data-dir="-1" aria-label="Bajar el peso">−</button>
+          <input id="w-${exId}" type="number" inputmode="decimal" step="0.5" min="0"
+                 value="${w ?? ''}" placeholder="kg" data-w="${exId}">
+          <span class="wu">kg${perDbTxt(exId)}</span>
+          <button class="wstep" data-wstep="${exId}" data-dir="1" aria-label="Subir el peso">+</button>
+        </div>
+        <p class="wdiscos">${textoWrow(exId, w)}</p>
+      </div>`}
       <div class="setrow">${chips}</div>
       <div class="panel" id="panel-${exId}">
         <div class="demo"><img src="${ex.gif}" alt="${ex.name}"></div>
         <p class="cue">${ex.cue}</p>
-        ${ex.noload ? '' : `<div class="load">
-          <label for="w-${exId}">${isPair(exId) ? 'Peso de cada mancuerna' : 'Peso'}</label>
-          <input id="w-${exId}" type="number" inputmode="decimal" step="0.5" min="0"
-                 value="${w ?? ''}" placeholder="kg" data-w="${exId}">
-          <span class="prev">${isPair(exId) ? 'una sola mancuerna, no las dos — ' : ''}se aplica a todas las series</span>
-        </div>
-        ${(()=>{ const s = suggestedWeight(exId);
-          return (s && s.kg != null && s.kg !== w)
-            ? `<button class="usesug" data-usesug="${exId}" data-kg="${s.kg}">Usar ${fmtKg(s.kg)} kg${perDbTxt(exId)}</button>` : ''; })()}`}
         ${ex.swap ? `<p class="swap">${ex.swap}</p>` : ''}
         <details class="steps"><summary>Paso a paso</summary>
           <ol>${ex.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
@@ -1519,6 +1559,12 @@ document.addEventListener('click', e=>{
     save(); renderHoy(); return;
   }
 
+  const st = e.target.closest('[data-wstep]');
+  if(st){
+    stepWeight(st.dataset.wstep, Number(st.dataset.dir));
+    return;
+  }
+
   const us = e.target.closest('[data-usesug]');
   if(us){
     const id = us.dataset.usesug;
@@ -1770,19 +1816,28 @@ document.addEventListener('click', e=>{
 });
 
 function refreshWeightBits(exId){
-  const card = document.querySelector(`[data-toggle="${exId}"]`);
-  if(card){
-    const sc = card.querySelector('.scheme');
-    if(sc){
-      const item = (SESSIONS[currentSession()].items || []).find(i=>i.id===exId);
-      const ex = EX[exId];
-      const rangeTxt = ex.time ? `${ex.range[0]}-${ex.range[1]} seg` : `${ex.range[0]}-${ex.range[1]}`;
-      sc.innerHTML = `${effSets(item ? item.sets : 3)} × ${rangeTxt} ${suggestChip(exId)}${discosChip(exId)}`;
-    }
-  }
+  const w = state.weights[exId];
+  const inp = document.getElementById('w-' + exId);
+  if(inp && String(inp.value) !== String(w ?? '')) inp.value = w ?? '';
+  const linea = document.querySelector(`[data-wrow="${exId}"] .wdiscos`);
+  if(linea) linea.textContent = textoWrow(exId, w);
   const btn = document.querySelector(`[data-usesug="${exId}"]`);
   const s = suggestedWeight(exId);
-  if(btn && (!s || s.kg == null || s.kg === state.weights[exId])) btn.remove();
+  if(btn && (!s || s.kg == null || s.kg === w)) btn.remove();
+}
+
+/* Sube o baja el peso al siguiente que se pueda armar. Escribirlo a mano
+   sigue valiendo cualquier número. */
+function stepWeight(exId, dir){
+  const cur = state.weights[exId];
+  if(cur == null){
+    const s = suggestedWeight(exId);
+    state.weights[exId] = (s && s.kg != null) ? s.kg : (usaMancuerna(exId) ? LADDER[0] : 0);
+  } else {
+    state.weights[exId] = dir > 0 ? nextWeight(exId, cur) : prevWeight(exId, cur);
+  }
+  save();
+  refreshWeightBits(exId);
 }
 
 document.addEventListener('change', e=>{
@@ -1835,6 +1890,15 @@ function stopTimer(){
 load();
 
 if('serviceWorker' in navigator){
+  /* Cuando entra una versión nueva, el service worker toma el control de la pantalla
+     que ya estaba abierta. Ahí recargamos una sola vez, así se ve sin abrir de nuevo. */
+  let yaRecargo = false;
+  const habiaControl = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(!habiaControl || yaRecargo) return;
+    yaRecargo = true;
+    location.reload();
+  });
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').catch(e=>console.log('SW:', e));
   });
