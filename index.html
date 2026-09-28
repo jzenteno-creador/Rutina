@@ -337,7 +337,7 @@ details.steps li{margin-bottom:5px}
 </head>
 <body>
 
-<header><div class="wrap"><h1>Rutina <span class="ver">v3</span></h1><span class="streak" id="streak"></span></div></header>
+<header><div class="wrap"><h1>Rutina <span class="ver">v4</span></h1><span class="streak" id="streak"></span></div></header>
 
 <nav><div class="wrap" role="tablist">
   <button role="tab" data-tab="hoy" aria-selected="true">Hoy</button>
@@ -1022,10 +1022,9 @@ function renderHoy(){
     const rest = Math.max(0, -daysSince(state.deload.activeUntil));
     html += `<div class="banner deload"><strong>Semana de deload.</strong> La mitad de las series, mismo peso, mismos ejercicios. Termina el ${fmtDate(state.deload.activeUntil)}.
       <div class="b-actions"><button id="deload-end">Terminar deload ahora</button></div></div>`;
-  } else if(deloadDue()){
-    html += `<div class="banner deload"><strong>Semana 5 de entrenamiento.</strong> Toca aflojar: una semana con la mitad de las series y el mismo peso. En déficit conviene el extremo corto del rango habitual de 4-8 semanas.
-      <div class="b-actions"><button class="pri" id="deload-on">Activar 7 días</button><button id="deload-later">Más adelante</button></div></div>`;
   }
+  /* El aviso de semana de descarga queda sacado a pedido de John. El deload
+     sigue existiendo en el código por si algún día lo quiere de vuelta. */
 
   if(state.lastDone && daysSince(state.lastDone) > 4 && !Object.keys(state.todaySets).length){
     html += `<div class="banner">Hace ${daysSince(state.lastDone)} días de la última sesión.${state.explore ? '' : ' Te toca '+SESSIONS[inQueue].name+'.'}</div>`;
